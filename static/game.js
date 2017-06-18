@@ -1,193 +1,158 @@
+// socket setup
 let socket = io();
-
-
-let playersArray = []
-
+// players data declaration
+let players = {},
+    player = '';
+// socket client logic
+socket.on('connected', (data) => {
+  player = data;
+  players[player] = {up: false, left: false, right: false, shot: false};
+  players[player].player = player;
+});
+// listening for state update
+socket.on('state', (data) => {
+  players = data;
+});
+// keyboard handlers
 document.addEventListener('keydown', function(event) {
   switch (event.keyCode) {
-    case 65: // A
-      movement.left = true;
+  case 65: // A
+      players[player].left = true;
       break;
-    case 87: // W
-      movement.up = true;
+  case 87: // W
+      players[player].up = true;
       break;
-    case 68: // D
-      movement.right = true;
+  case 68: // D
+      players[player].right = true;
       break;
-    case 83: // S
-      movement.down = true;
+  case 32: // Space
+      players[player].shot = true;
       break;
   }
 });
 document.addEventListener('keyup', function(event) {
   switch (event.keyCode) {
-    case 65: // A
-      movement.left = false;
+  case 65: // A
+      players[player].left = false;
       break;
-    case 87: // W
-      movement.up = false;
+  case 87: // W
+      players[player].up = false;
       break;
-    case 68: // D
-      movement.right = false;
+  case 68: // D
+      players[player].right = false;
       break;
-    case 83: // S
-      movement.down = false;
+    case 32: // Space
+      players[player].shot = false;
       break;
   }
 });
-let movement = {
-  up: false,
-  down: false,
-  left: false,
-  right: false
-}
-setInterval(function() {
-  socket.emit('movement', movement);
-}, 1000 / 60);
-
-let states = {
-  game: 'game'
+// Phaser props
+const GAME = {
+  states: 'game',
+  props: {
+    Width: 640,
+    Height: 480
+  },
+  assets: {
+    player1: {URL: 'static/spaceship.png', name: 'player1'},
+    player2: {URL: 'static/spaceship1.png', name: 'player2'},
+    bullet: {URL: 'static/bullet.png', name: 'bullet'}
+  },
+  ship: {
+    acceleration: 300,
+    drag: 300,
+    maxVelocity: 300,
+    angularVelocity: 200
+  },
+  bullet: {
+    speed: 400,
+    interval: 200,
+    lifespan: 2000,
+    maxCount: 30,
+  }
 };
-let gameProperties = {
-    screenWidth: 640,
-    screenHeight: 480,
-};
-let graphicAssets = {
-  ship: {URL: 'static/spaceship.png', name: 'ship'},
-  bullet: {URL: 'static/bullet.png', name: 'bullet'}
-};
-let shipProperties = {
-  startX: gameProperties.screenWidth * 0.5,
-  startY: gameProperties.screenHeight * 0.5,
-  acceleration: 300,
-  drag: 300,
-  maxVelocity: 300,
-  angularVelocity: 200
-};
-let bulletProperties = {
-  speed: 400,
-  interval: 200,
-  lifespan: 2000,
-  maxCount: 30,
-}
-
-let gameState = function (game) {
-  this.shipSprite;
-
-  this.key_left;
-  this.key_right;
-  this.key_up;
-  this.key_shot;
-
+// game setup
+gameState = function(game) {
+  this.player1;
+  this.player2;
   this.bulletGroup;
   this.bulletInterval = 0;
-}
+};
 gameState.prototype = {
-  preload: function () {
-    game.load.image( graphicAssets.ship.name, graphicAssets.ship.URL );
-    game.load.image( graphicAssets.bullet.name, graphicAssets.bullet.URL );
+  preload: function() {
+    game.load.image( GAME.assets.player1.name, GAME.assets.player1.URL );
+    game.load.image( GAME.assets.player2.name, GAME.assets.player2.URL );
+    game.load.image( GAME.assets.bullet.name, GAME.assets.bullet.URL );
   },
-
-  update: function () {
-    this.checkPlayerInput();
+  update: function() {
+    this.movement(players['player1']);
+    this.movement(players['player2']);
+    game.physics.arcade.collide(this.player1, this.player2, () => {
+      console.log('ships collide');
+    }, null, this);
+    game.physics.arcade.collide([this.player1, this.player2], this.bulletGroup, () => {
+      console.log('bullets collide');
+    }, null, this);
   },
-
-  initGraphics: function () {
-    this.shipSprite = game.add.sprite( shipProperties.startX, shipProperties.startY, graphicAssets.ship.name );
-    this.shipSprite.angle = -0;
-    this.shipSprite.anchor.set( 0.5, 0.5 );
+  initGraphics: function(player, x, y) {
+    this[player] = game.add.sprite(x, y, GAME.assets[player].name);
+    this[player].angle = -0;
+    this[player].anchor.set(.5,.5);
     this.bulletGroup = game.add.group();
   },
-
-  initPhysics: function () {
-    game.physics.startSystem( Phaser.Physics.ARCADE );
-
-    game.physics.enable( this.shipSprite, Phaser.Physics.ARCADE );
-    this.shipSprite.body.drag.set( shipProperties.drag );
-    this.shipSprite.body.maxVelocity.set( shipProperties.maxVelocity );
-
+  initPhysics: function(player) {
+    game.physics.startSystem(Phaser.Physics.ARCADE);
+    game.physics.enable(this[player], Phaser.Physics.ARCADE);
+    this[player].body.drag.set(GAME.ship.drag);
+    this[player].body.maxVelocity.set(GAME.ship.maxVelocity);
     this.bulletGroup.enableBody = true;
     this.bulletGroup.physicsBodyType = Phaser.Physics.ARCADE;
-    this.bulletGroup.createMultiple( bulletProperties.maxCount, graphicAssets.bullet.name)
-    this.bulletGroup.setAll('anchor.x', 0.5);
-    this.bulletGroup.setAll('anchor.y', 0.5);
-    this.bulletGroup.setAll('lifespan', bulletProperties.lifespan);
+    this.bulletGroup.createMultiple(GAME.bullet.maxCount, GAME.assets.bullet.name);
+    this.bulletGroup.setAll('anchor.x', .5);
+    this.bulletGroup.setAll('anchor.y', .5);
+    this.bulletGroup.setAll('lifespan', GAME.bullet.lifespan);
   },
-
-  initKeyboard: function () {
-    this.key_left = game.input.keyboard.addKey( Phaser.Keyboard.LEFT );
-    this.key_right = game.input.keyboard.addKey( Phaser.Keyboard.RIGHT );
-    this.key_up = game.input.keyboard.addKey( Phaser.Keyboard.UP );
-    this.key_shot = game.input.keyboard.addKey( Phaser.Keyboard.SPACEBAR );
+  create: function() {
+    this.initGraphics('player1', 100, 100);
+    this.initGraphics('player2', 300, 300);
+    this.initPhysics('player1');
+    this.initPhysics('player2');
+    game.stage.disableVisibilityChange = true;
+    this.player1.body.collideWorldBounds = true;
+    this.player2.body.collideWorldBounds = true;
+    cursors = game.input.keyboard.createCursorKeys();
   },
-
-  checkPlayerInput: function () {
-    // for (id in playersArray) {
-      let player = playersArray[playersArray.length-1];
-      // console.log(player);
-
-      if (player.left) this.shipSprite.body.angularVelocity = -shipProperties.angularVelocity;
-      else if (player.right) this.shipSprite.body.angularVelocity = shipProperties.angularVelocity;
-      else this.shipSprite.body.angularVelocity = 0;
-
-      if (player.up) game.physics.arcade.accelerationFromRotation( this.shipSprite.rotation, shipProperties.acceleration, this.shipSprite.body.acceleration );
-      else this.shipSprite.body.acceleration.set( 0 );
-
-      if (player.down) {
-        this.shot();
-      }
-
-      // if (this.key_left.isDown) this.shipSprite.body.angularVelocity = -shipProperties.angularVelocity;
-      // else if (this.key_right.isDown) this.shipSprite.body.angularVelocity = shipProperties.angularVelocity;
-      // else this.shipSprite.body.angularVelocity = 0;
-      //
-      // if (this.key_up.isDown) game.physics.arcade.accelerationFromRotation( this.shipSprite.rotation, shipProperties.acceleration, this.shipSprite.body.acceleration );
-      // else this.shipSprite.body.acceleration.set( 0 );
-      //
-      // if (this.key_shot.isDown) {
-      //   this.shot();
-      // }
-    // }
-  },
-
-  shot: function () {
-    if (game.time.now > this.bulletInterval) {
+  shot: function(player) {
+    if(game.time.now > this.bulletInterval) {
       let bullet = this.bulletGroup.getFirstExists(false);
-      if (bullet) {
-        let length = this.shipSprite.width * 0.5;
-        let x = this.shipSprite.x + ( Math.cos(this.shipSprite.rotation) * length );
-        let y = this.shipSprite.y + ( Math.sin(this.shipSprite.rotation) * length );
-
+      if(bullet) {
+        let length = this[player.player].width * .5;
+        let x = this[player.player].x + (Math.cos(this[player.player].rotation) * length);
+        let y = this[player.player].y + (Math.sin(this[player.player].rotation) * length);
         bullet.reset(x, y);
-        bullet.lifespan = bulletProperties.lifespan;
-        bullet.rotation = this.shipSprite.rotation;
-
-        game.physics.arcade.velocityFromRotation( this.shipSprite.rotation, bulletProperties.speed, bullet.body.velocity );
-        this.bulletInterval = game.time.now + bulletProperties.interval;
+        bullet.lifespan = GAME.bullet.lifespan;
+        bullet.rotation = this[player.player].rotation;
+        game.physics.arcade.velocityFromRotation(this[player.player].rotation, GAME.bullet.speed, bullet.body.velocity);
+        this.bulletInterval = game.time.now + GAME.bullet.interval;
       }
     }
   },
-
-  create: function () {
-    this.initGraphics();
-    this.initPhysics();
-    this.initKeyboard();
-    game.stage.disableVisibilityChange = true;
+  movement: function(player) {
+    if(player.left) {
+      this[player.player].body.angularVelocity = -GAME.ship.angularVelocity;
+    } else {
+      player.right ? this[player.player].body.angularVelocity = GAME.ship.angularVelocity : this[player.player].body.angularVelocity = 0;
+    }
+    player.up ? game.physics.arcade.accelerationFromRotation(this[player.player].rotation, GAME.ship.acceleration, this[player.player].body.acceleration) : this[player.player].body.acceleration.set(0);
+    player.shot ? this.shot(player) : null;
+    // player.player === 'player1' ? this.player1.position.x = player.x : this.player2.position.x = player.x;
+    // player.player === 'player1' ? this.player1.position.y = player.y : this.player2.position.y = player.y;
   }
-}
-
-socket.emit('new player');
-socket.emit('movement', movement)
-socket.on('state', function(player) {
-  playersArray.push(player);
-  // for (let id in players) {
-  //   playersArray.push(players[id]);
-  // }
-})
-
-
-
-
-let game = new Phaser.Game(gameProperties.screenWidth, gameProperties.screenHeight, Phaser.AUTO, 'game');
-game.state.add(states.game, gameState);
-setTimeout(() => {game.state.start(states.game)}, 3000);
+};
+//
+let game = new Phaser.Game(GAME.props.width, GAME.props.height, Phaser.auto, 'game');
+game.state.add(GAME.states, gameState);
+setTimeout(() => {setInterval(() => {
+  socket.emit('keyboard', players[player]);
+}, 1000/60)}, 2000);
+setTimeout(() => {game.state.start(GAME.states)}, 3000);
